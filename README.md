@@ -8,9 +8,7 @@
 
 # Description	
 
-TODO.
-
-(This README is generated from a cookiecutter template. Delete this comment and modify your README!)
+A demo for multimodal AI POC.
 
 # Installation
 
