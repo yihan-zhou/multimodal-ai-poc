@@ -1,0 +1,104 @@
+# https://docs.astral.sh/uv/reference/settings/
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+
+# PROJECT
+
+[project]
+name = "multimodal-ai-poc"
+version = "0.1.0"
+description = "TODO"
+authors = [{ name = "yihan-zhou" }]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "hatchling>=1.27.0",
+]
+
+# LINKS
+
+[project.urls]
+Homepage = "https://github.com/yihan-zhou/multimodal-ai-poc"
+Documentation = "https://yihan-zhou.github.io/multimodal-ai-poc/"
+Repository = "https://github.com/yihan-zhou/multimodal-ai-poce"
+"Bug Tracker" = "https://github.com/yihan-zhou/multimodal-ai-poc/issues"
+
+# SCRIPTS
+
+[project.scripts]
+multimodal-ai-poc = "multimodal_ai_poc.scripts:main"
+
+# DEPENDENCIES
+
+[dependency-groups]
+check = [
+    "bandit>=1.8.3",
+    "coverage>=7.6.12",
+    "mypy>=1.15.0",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-xdist>=3.6.1",
+    "ruff>=0.9.9",
+]
+commit = ["commitizen>=4.4.1", "pre-commit>=4.1.0"]
+dev = ["rust-just>=1.39.0"]
+doc = ["pdoc>=15.0.1"]
+
+# TOOLS
+
+[tool.uv]
+default-groups = ["check", "commit", "dev", "doc"]
+
+[tool.bandit]
+targets = ["src"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "pep621"
+update_changelog_on_bump = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["__main__.py"]
+
+[tool.mypy]
+pretty = true
+python_version = "3.13"
+check_untyped_defs = true
+ignore_missing_imports = true
+strict = false
+disable_error_code = ["import-untyped"]
+# See https://mypy.readthedocs.io/en/stable/config_file.html#untyped-definitions-and-calls
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+addopts = "--verbosity=2"
+pythonpath = ["src"]
+
+[tool.ruff]
+fix = true
+indent-width = 4
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D100", "D103"]
+
+# SYSTEMS
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
