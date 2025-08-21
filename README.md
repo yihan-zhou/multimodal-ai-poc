@@ -8,7 +8,7 @@
 
 # Description	
 
-A demo for multimodal AI POC.
+A demo for multimodal AI POC, inspired by https://github.com/anyscale/multimodal-ai/blob/main/README.md
 
 # Installation
 
