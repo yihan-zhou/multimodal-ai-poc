@@ -8,6 +8,7 @@ python multimodal_ai_poc/embeddings.py \
     -w 4 \
     -o embeddings
 """
+
 import argparse
 import shutil
 from pathlib import Path
@@ -32,7 +33,9 @@ class EmbedImages:
     def __call__(self, batch):
         # Load and preprocess images
         images = [Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]]
-        inputs: BatchEncoding = self.processor(images=images, return_tensors="pt", padding=True).to(self.device)
+        inputs: BatchEncoding = self.processor(images=images, return_tensors="pt", padding=True).to(
+            self.device
+        )
 
         # Generate embeddings
         with torch.inference_mode():
@@ -66,7 +69,9 @@ def get_image_ds(data_uri: str, limit: int | None = None) -> ray.data.Dataset:
     return ds
 
 
-def generate_embeddings(dataset_uri: str, num_images: int, model_id: str, num_ray_workers: int = 4) -> ray.data.Dataset:
+def generate_embeddings(
+    dataset_uri: str, num_images: int, model_id: str, num_ray_workers: int = 4
+) -> ray.data.Dataset:
     """
     Args:
         dataset_uri: str, Object storage URI for data
@@ -105,7 +110,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compare production and staging model performance for smoke detection."
     )
-    parser.add_argument("--dataset_uri", "-d", type=str, required=True, default="s3://doggos-dataset/train", help="URI to dataset, default=s3://doggos-dataset/train")
+    parser.add_argument(
+        "--dataset_uri",
+        "-d",
+        type=str,
+        required=True,
+        default="s3://doggos-dataset/train",
+        help="URI to dataset, default=s3://doggos-dataset/train",
+    )
     parser.add_argument(
         "--num_images",
         "-n",
@@ -141,6 +153,7 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
+
 def main():
     """Generate embeddings for a dataset given CLI arguments.
 
@@ -156,11 +169,16 @@ def main():
         # Ensure directory exists
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    embeddings_ds = generate_embeddings(dataset_uri=args.dataset_uri, num_images=args.num_images, model_id=args.model_id, num_ray_workers=args.num_ray_workers)
+    embeddings_ds = generate_embeddings(
+        dataset_uri=args.dataset_uri,
+        num_images=args.num_images,
+        model_id=args.model_id,
+        num_ray_workers=args.num_ray_workers,
+    )
 
     logger.info("Saving embeddings")
     embeddings_ds.write_parquet(str(output_dir))
 
+
 if __name__ == "__main__":
     main()
-
