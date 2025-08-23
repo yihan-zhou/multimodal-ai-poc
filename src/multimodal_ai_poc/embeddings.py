@@ -22,11 +22,17 @@ from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 from transformers.tokenization_utils_base import BatchEncoding
 
+# Need to pin revisions per CWE B615 during bandit checks - see model_refs_helper
+DEFAULT_CLIP_REVISION = "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268"
+
 
 class EmbedImages:
-    def __init__(self, model_id: str, device: str):
-        self.processor = CLIPProcessor.from_pretrained(model_id)
-        self.model = CLIPModel.from_pretrained(model_id)
+    def __init__(
+        self, model_id: str, device: str = "cpu", model_revision: str = DEFAULT_CLIP_REVISION
+    ):
+        # Adding nosecs bc bandit only recognizes when the str literal is passed as revision
+        self.processor = CLIPProcessor.from_pretrained(model_id, revision=model_revision)  # nosec B615
+        self.model = CLIPModel.from_pretrained(model_id, revision=model_revision)  # nosec B615
         self.model.to(device)
         self.device = device
 

@@ -28,7 +28,7 @@ from multimodal_ai_poc.embeddings import EmbedImages
 
 
 def url_to_array(url: str) -> npt.NDArray[np.uint8]:
-    arr = np.array(Image.open(BytesIO(requests.get(url).content)).convert("RGB"))
+    arr = np.array(Image.open(BytesIO(requests.get(url, timeout=10).content)).convert("RGB"))
     logger.debug(f"{np.info(arr)}")  # type: ignore[func-returns-value]
     return arr
 

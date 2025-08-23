@@ -52,7 +52,7 @@ check = [
     "ruff>=0.9.9",
 ]
 commit = ["commitizen>=4.4.1", "pre-commit>=4.1.0"]
-dev = ["rust-just>=1.39.0"]
+dev = ["rust-just>=1.39.0", "huggingface-hub>=0.34.4"]
 doc = ["pdoc>=15.0.1"]
 
 # TOOLS
