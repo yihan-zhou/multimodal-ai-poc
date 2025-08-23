@@ -8,6 +8,7 @@ import torch
 from loguru import logger
 from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
+from transformers.tokenization_utils_base import BatchEncoding
 
 MAX_IMAGES = 100
 
@@ -23,8 +24,7 @@ class EmbedImages:
         # Load and preprocess images
         logger.info(f"{type(batch)=}")
         images = [Image.fromarray(np.uint8(img)).convert("RGB") for img in batch["image"]]
-        inputs = self.processor(images=images, return_tensors="pt", padding=True).to(self.device)
-        logger.info(f"{type(inputs)=}")
+        inputs: BatchEncoding = self.processor(images=images, return_tensors="pt", padding=True).to(self.device)
 
         # Generate embeddings
         with torch.inference_mode():
