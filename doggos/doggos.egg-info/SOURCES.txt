@@ -1,0 +1,13 @@
+pyproject.toml
+doggos/__init__.py
+doggos/data.py
+doggos/embed.py
+doggos/infer.py
+doggos/model.py
+doggos/serve.py
+doggos/train.py
+doggos/utils.py
+doggos.egg-info/PKG-INFO
+doggos.egg-info/SOURCES.txt
+doggos.egg-info/dependency_links.txt
+doggos.egg-info/top_level.txt
