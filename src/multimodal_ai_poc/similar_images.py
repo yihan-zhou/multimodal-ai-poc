@@ -13,19 +13,22 @@ from doggos.embed import display_top_matches, get_top_matches
 from multimodal_ai_poc.embeddings import EmbedImages
 
 
-def url_to_array(url: str) -> npt.NDArray:
+def url_to_array(url: str) -> npt.NDArray[np.uint8]:
     arr = np.array(Image.open(BytesIO(requests.get(url).content)).convert("RGB"))
-    logger.info(f"{arr.dtype=} {np.info(arr)}")
+    logger.debug(f"{np.info(arr)}")  # type: ignore[func-returns-value]
     return arr
 
-def embed_image(url: str, embedding_generator: EmbedImages) -> npt.NDArray:
+
+def embed_image(url: str, embedding_generator: EmbedImages) -> npt.NDArray[np.float32]:
     image = url_to_array(url=url)
     embedding = embedding_generator({"image": [image]})["embedding"][0]
-    logger.info(f"{np.shape(embedding)=} {embedding.dtype=} {np.info(embedding)=}")
+    logger.debug(f"{np.info(embedding)}")  # type: ignore[func-returns-value]
     return embedding
+
 
 def load_embeddings_ds(embeddings_path: Path) -> ray.data.Dataset:
     return ray.data.read_parquet(str(embeddings_path))
+
 
 def main():
     url = "https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png"
@@ -34,8 +37,11 @@ def main():
     embedding = embed_image(url=url, embedding_generator=embedding_generator)
     embeddings_ds = load_embeddings_ds(embeddings_path=embeddings_path)
 
-    top_matches: list[dict[str, Any]] = get_top_matches(query_embedding=embedding, embeddings_ds=embeddings_ds, n=5)
+    top_matches: list[dict[str, Any]] = get_top_matches(
+        query_embedding=embedding, embeddings_ds=embeddings_ds, n=5
+    )
     display_top_matches(url, top_matches)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

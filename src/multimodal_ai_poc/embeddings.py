@@ -1,4 +1,3 @@
-import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 MAX_IMAGES = 100
+
 
 class EmbedImages:
     def __init__(self, model_id: str, device: str):
@@ -32,9 +32,11 @@ class EmbedImages:
 
         return batch
 
+
 def _add_class(row: dict[str, Any]) -> dict[str, Any]:
     row["class"] = row["path"].rsplit("/", 3)[-2]
     return row
+
 
 def get_image_ds(data_path: str, limit: int | None = None) -> ray.data.Dataset:
     ds = ray.data.read_images(
@@ -47,7 +49,8 @@ def get_image_ds(data_path: str, limit: int | None = None) -> ray.data.Dataset:
         ds = ds.limit(limit)
     return ds
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     # Generate batch embeddings
     logger.info("Getting dataset")
     data_path = "s3://doggos-dataset/train"
