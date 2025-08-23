@@ -76,7 +76,7 @@ def generate_embeddings(
     Args:
         dataset_uri: str, Object storage URI for data
         num_images: int, number of images to process from dataset
-        model_id: str, Model ID for pretrained embedding model
+        model_id: str, Pretrained embedding model ID
         num_ray_workers: int (optional), number of Ray Data workers to use for embedding generation
 
     Returns:
@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
         description="Compare production and staging model performance for smoke detection."
     )
     parser.add_argument(
-        "--dataset_uri",
+        "--dataset-uri",
         "-d",
         type=str,
         required=True,
@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
         help="URI to dataset, default=s3://doggos-dataset/train",
     )
     parser.add_argument(
-        "--num_images",
+        "--num-images",
         "-n",
         type=int,
         required=False,
@@ -127,7 +127,7 @@ def parse_args() -> argparse.Namespace:
         help="Number of images to process from the dataset, default=100",
     )
     parser.add_argument(
-        "--model_id",
+        "--model-id",
         "-m",
         type=str,
         required=True,
@@ -135,7 +135,7 @@ def parse_args() -> argparse.Namespace:
         help="CLIPModel to use for embedding generation, default=openai/clip-vit-base-patch32",
     )
     parser.add_argument(
-        "--embeddings_output_dir",
+        "--embeddings-output-dir",
         "-o",
         type=str,
         required=False,
@@ -143,7 +143,7 @@ def parse_args() -> argparse.Namespace:
         help="Directory to save embeddings, default=./embeddings",
     )
     parser.add_argument(
-        "--num_ray_workers",
+        "--num-ray-workers",
         "-w",
         type=int,
         required=False,
