@@ -1,6 +1,12 @@
-"""
+"""Generate image embeddings using a pretrained model.
 
-Example usage: python multimodal_ai_poc/embeddings.py -d s3://doggos-dataset/train -n 100 -m openai/clip-vit-base-patch32 -w 4 -o embeddings
+Example usage:
+python multimodal_ai_poc/embeddings.py \
+    -d s3://doggos-dataset/train \
+    -n 100 \
+    -m openai/clip-vit-base-patch32 \
+    -w 4 \
+    -o embeddings
 """
 import argparse
 import shutil
@@ -60,7 +66,35 @@ def get_image_ds(data_uri: str, limit: int | None = None) -> ray.data.Dataset:
     return ds
 
 
-def generate_embeddings():
+def generate_embeddings(dataset_uri: str, num_images: int, model_id: str, num_ray_workers: int = 4) -> ray.data.Dataset:
+    """
+    Args:
+        dataset_uri: str, Object storage URI for data
+        num_images: int, number of images to process from dataset
+        model_id: str, Model ID for pretrained embedding model
+        num_ray_workers: int (optional), number of Ray Data workers to use for embedding generation
+
+    Returns:
+        ray.data.Dataset with "embeddings" column
+    """
+    logger.debug(f"Getting {num_images=} from dataset {dataset_uri=}")
+    ds = get_image_ds(data_uri=dataset_uri, limit=num_images)
+
+    logger.info(f"Generating embeddings with {model_id=}")
+    embeddings_ds = ds.map_batches(
+        EmbedImages,
+        fn_constructor_kwargs={
+            "model_id": model_id,
+            "device": "cpu",
+            # "device": "cuda",
+        },  # class kwargs
+        fn_kwargs={},  # __call__ kwargs
+        concurrency=num_ray_workers,
+        # batch_size=64,
+        # num_gpus=1,
+        # accelerator_type="L4",
+    )
+    return embeddings_ds.drop_columns(["image"])
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,24 +156,7 @@ def main():
         # Ensure directory exists
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Getting {args.num_images=} from dataset {args.dataset_uri=}")
-    ds = get_image_ds(data_uri=args.dataset_uri, limit=args.num_images)
-
-    logger.info(f"Generating embeddings with {args.model_id=}")
-    embeddings_ds = ds.map_batches(
-        EmbedImages,
-        fn_constructor_kwargs={
-            "model_id": args.model_id,
-            "device": "cpu",
-            # "device": "cuda",
-        },  # class kwargs
-        fn_kwargs={},  # __call__ kwargs
-        concurrency=args.num_ray_workers,
-        # batch_size=64,
-        # num_gpus=1,
-        # accelerator_type="L4",
-    )
-    embeddings_ds = embeddings_ds.drop_columns(["image"])  # remove image column
+    embeddings_ds = generate_embeddings(dataset_uri=args.dataset_uri, num_images=args.num_images, model_id=args.model_id, num_ray_workers=args.num_ray_workers)
 
     logger.info("Saving embeddings")
     embeddings_ds.write_parquet(str(output_dir))
