@@ -1,3 +1,5 @@
+"""Demonstrate how to get revision refs for huggingface_hub models."""
+
 from huggingface_hub import HfApi
 from loguru import logger
 
