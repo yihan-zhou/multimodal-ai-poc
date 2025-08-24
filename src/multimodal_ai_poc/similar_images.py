@@ -1,8 +1,5 @@
 """Display top N similar images based on embedding similarity.
-    url = "https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png"
-    embeddings_dir = Path(__file__).parent / "embeddings"
-    model_id = "openai/clip-vit-base-patch32"
-    n = 10
+
 Example usage:
 python multimodal_ai_poc/similar_images.py \
     -i https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png \
@@ -14,17 +11,93 @@ python multimodal_ai_poc/similar_images.py \
 import argparse
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import numpy as np
 import numpy.typing as npt
 import ray
 import requests
 from loguru import logger
+from matplotlib import pyplot as plt
 from PIL import Image
+from scipy.spatial.distance import cdist
 
-from doggos.embed import display_top_matches, get_top_matches
 from multimodal_ai_poc.embeddings import EmbedImages
+
+
+def get_top_matches(
+    query_embedding: npt.NDArray[np.float32],
+    embeddings_ds: ray.data.Dataset,
+    class_filters: Iterable = None,
+    n: int = 4,
+) -> list[dict[str, Any]]:
+    """Get top N matches based for query embedding
+
+    Args:
+        query_embedding: npt.NDArray[np.float32], query embedding
+        embeddings_ds: ray.data.Dataset, source embeddings
+        class_filters: Iterable, class filters to apply to source embeddings
+        n: int, number of matches
+
+    Return:
+        list[dict[str, Any]]
+    """
+    rows = embeddings_ds.take_all()
+    if class_filters:
+        class_filters = set(class_filters)
+        rows = [r for r in rows if r["class"] in class_filters]
+    if not rows:
+        return []
+
+    # Vectorise
+    embeddings = np.vstack([r["embedding"] for r in rows]).astype(np.float32)
+    sims = 1 - cdist([query_embedding], embeddings, metric="cosine")[0]
+
+    # Stable top N in NumPy
+    k = min(n, sims.size)
+    idx = np.argpartition(-sims, k - 1)[:k]
+    idx = idx[np.argsort(-sims[idx])]
+
+    # Package results
+    # It would be better to create a dataclass for this result at some point
+    return [
+        {
+            "class": rows[i]["class"],
+            "path": rows[i]["path"],
+            "similarity": float(sims[i]),
+        }
+        for i in idx
+    ]
+
+
+def display_top_matches(image_url: str, matches: list[dict[str, Any]]) -> None:
+    """Display top matches for
+
+    Args:
+        image_url: str, input image URL
+        matches: List of top matches based on embedding similarity
+
+    Return: None
+    """
+    fig, axes = plt.subplots(1, len(matches) + 1, figsize=(15, 5))
+
+    # Display query image
+    axes[0].imshow(url_to_array(url=image_url))
+    axes[0].axis("off")
+    axes[0].set_title("Query image")
+
+    # Display matches
+    for i, match in enumerate(matches):
+        bucket = match["path"].split("/")[0]
+        key = "/".join(match["path"].split("/")[1:])
+        url = f"https://{bucket}.s3.us-west-2.amazonaws.com/{key}"
+        image = url_to_array(url=url)
+        axes[i + 1].imshow(image)
+        axes[i + 1].axis("off")
+        axes[i + 1].set_title(f"{match['class']} ({match['similarity']:.2f})")
+
+    plt.tight_layout()
+    plt.show()
 
 
 def url_to_array(url: str) -> npt.NDArray[np.uint8]:
