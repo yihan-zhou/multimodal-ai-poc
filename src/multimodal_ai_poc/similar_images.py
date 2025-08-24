@@ -9,9 +9,9 @@ python multimodal_ai_poc/similar_images.py \
 """
 
 import argparse
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Iterable
 
 import numpy as np
 import numpy.typing as npt
@@ -25,27 +25,29 @@ from scipy.spatial.distance import cdist
 from multimodal_ai_poc.embeddings import EmbedImages
 
 
+@dataclass
+class SimilarImage:
+    class_label: str
+    path: str
+    similarity: float
+
+
 def get_top_matches(
     query_embedding: npt.NDArray[np.float32],
     embeddings_ds: ray.data.Dataset,
-    class_filters: Iterable = None,
     n: int = 4,
-) -> list[dict[str, Any]]:
-    """Get top N matches based for query embedding
+) -> list[SimilarImage]:
+    """Get top N matches based for query embedding.
 
     Args:
         query_embedding: npt.NDArray[np.float32], query embedding
         embeddings_ds: ray.data.Dataset, source embeddings
-        class_filters: Iterable, class filters to apply to source embeddings
         n: int, number of matches
 
     Return:
-        list[dict[str, Any]]
+        list[SimilarImage] containing class_label, path, and similarity
     """
     rows = embeddings_ds.take_all()
-    if class_filters:
-        class_filters = set(class_filters)
-        rows = [r for r in rows if r["class"] in class_filters]
     if not rows:
         return []
 
@@ -59,25 +61,21 @@ def get_top_matches(
     idx = idx[np.argsort(-sims[idx])]
 
     # Package results
-    # It would be better to create a dataclass for this result at some point
     return [
-        {
-            "class": rows[i]["class"],
-            "path": rows[i]["path"],
-            "similarity": float(sims[i]),
-        }
+        SimilarImage(class_label=rows[i]["class"], path=rows[i]["path"], similarity=float(sims[i]))
         for i in idx
     ]
 
 
-def display_top_matches(image_url: str, matches: list[dict[str, Any]]) -> None:
-    """Display top matches for
+def display_top_matches(image_url: str, matches: list[SimilarImage]) -> None:
+    """Display top similar matches.
 
     Args:
         image_url: str, input image URL
-        matches: List of top matches based on embedding similarity
+        matches: list[SimilarImage], List of top matches based on embedding similarity
 
-    Return: None
+    Return:
+        None
     """
     fig, axes = plt.subplots(1, len(matches) + 1, figsize=(15, 5))
 
@@ -88,13 +86,13 @@ def display_top_matches(image_url: str, matches: list[dict[str, Any]]) -> None:
 
     # Display matches
     for i, match in enumerate(matches):
-        bucket = match["path"].split("/")[0]
-        key = "/".join(match["path"].split("/")[1:])
+        bucket = match.path.split("/")[0]
+        key = "/".join(match.path.split("/")[1:])
         url = f"https://{bucket}.s3.us-west-2.amazonaws.com/{key}"
         image = url_to_array(url=url)
         axes[i + 1].imshow(image)
         axes[i + 1].axis("off")
-        axes[i + 1].set_title(f"{match['class']} ({match['similarity']:.2f})")
+        axes[i + 1].set_title(f"{match.class_label} ({match.similarity:.2f})")
 
     plt.tight_layout()
     plt.show()
@@ -102,14 +100,14 @@ def display_top_matches(image_url: str, matches: list[dict[str, Any]]) -> None:
 
 def url_to_array(url: str) -> npt.NDArray[np.uint8]:
     arr = np.array(Image.open(BytesIO(requests.get(url, timeout=10).content)).convert("RGB"))
-    logger.debug(f"{np.info(arr)}")  # type: ignore[func-returns-value]
+    logger.debug(f"{arr.shape=} {arr.dtype=}")
     return arr
 
 
 def embed_image(url: str, embedding_generator: EmbedImages) -> npt.NDArray[np.float32]:
     image = url_to_array(url=url)
     embedding = embedding_generator({"image": [image]})["embedding"][0]
-    logger.debug(f"{np.info(embedding)}")  # type: ignore[func-returns-value]
+    logger.debug(f"{embedding.shape=} {embedding.dtype=}")
     return embedding
 
 
@@ -135,7 +133,7 @@ def display_topn_similar_matches(
     embedding = embed_image(url=image_url, embedding_generator=embedding_generator)
     embeddings_ds = load_embeddings_ds(embeddings_path=embeddings_dir)
 
-    top_matches: list[dict[str, Any]] = get_top_matches(
+    top_matches: list[SimilarImage] = get_top_matches(
         query_embedding=embedding, embeddings_ds=embeddings_ds, n=n
     )
     display_top_matches(image_url, top_matches)
