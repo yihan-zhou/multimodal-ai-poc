@@ -518,11 +518,6 @@ wheels = [
 ]
 
 [[package]]
-name = "doggos"
-version = "0.1.0"
-source = { directory = "doggos" }
-
-[[package]]
 name = "execnet"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1385,7 +1380,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
-    { name = "doggos" },
     { name = "loguru" },
     { name = "matplotlib" },
     { name = "mlflow" },
@@ -1421,7 +1415,6 @@ doc = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.40.9" },
-    { name = "doggos", directory = "doggos" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "matplotlib", specifier = "==3.10.0" },
     { name = "mlflow", specifier = "==2.19.0" },
