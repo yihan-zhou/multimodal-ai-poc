@@ -19,18 +19,35 @@ uv run just install
 ```
 # Usage
 
-(The source comes with an example python package and an example FastAPI app. Delete this comment and add details for your application.)
+### Embeddings
 
-Test the example package
-```bash
-uv run multimodal-ai-poc
+There is a module that uses a pre-trained CLIPModel to generate image embeddings.
+
+Example usage:
+```aiignore
+python multimodal_ai_poc/embeddings.py \
+    -d s3://doggos-dataset/train \
+    -n 100 \
+    -m openai/clip-vit-base-patch32 \
+    -w 4 \
+    -o embeddings
 ```
 
-Test the example API with Docker:
-```bash	
-uv add fastapi uvicorn	
-uv run just package	
+### Similar Images
 
+There is a module that returns the topn most similar images given a set of embeddings.
+
+Example usage:
+```aiignore
+python multimodal_ai_poc/similar_images.py \
+    -i https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png \
+    -e embeddings \
+    -m openai/clip-vit-base-patch32 \
+    -n 10
+```
+
+Example for general Docker instructions:
+```bash	
 # Invoke docker compose	
 uv run just docker-compose
 
@@ -43,24 +60,7 @@ docker build --platform linux/amd64 -t multimodal-ai-poc-image -f Dockerfile .
 docker run -it --platform linux/amd64 --name multimodal-ai-poc-ctr -p 8000:8000 multimodal-ai-poc-image	
 ```
 
-Test the API using the local environment:
-```bash
-cd src	
-uv run uvicorn example_app.main:app --reload
-```
-
 ## Development Features
-
-(This section was copied into the created project's README so tool info is available to users.)
-
-* **Streamlined Project Structure:** A well-defined directory layout for source code, tests, documentation, tasks, and Docker configurations.
-Uv Integration: Effortless dependency management and packaging with [uv](https://docs.astral.sh/uv/).
-* **Automated Testing and Checks:** Pre-configured workflows using [Pytest](https://docs.pytest.org/), [Ruff](https://docs.astral.sh/ruff/), [Mypy](https://mypy.readthedocs.io/), [Bandit](https://bandit.readthedocs.io/), and [Coverage](https://coverage.readthedocs.io/) to ensure code quality, style, security, and type safety.
-* **Pre-commit Hooks:** Automatic code formatting and linting with [Ruff](https://docs.astral.sh/ruff/) and other pre-commit hooks to maintain consistency.
-* **Dockerized Deployment:** Dockerfile and docker-compose.yml for building and running the package within a containerized environment ([Docker](https://www.docker.com/)).
-* **uv+just Task Automation:** [just](https://github.com/casey/just) commands to simplify development workflows such as cleaning, installing, formatting, checking, building, documenting and running the project.
-* **Comprehensive Documentation:** [pdoc](https://pdoc.dev/) generates API documentation, and Markdown files provide clear usage instructions.
-* **GitHub Workflow Integration:** Continuous integration and deployment workflows are set up using [GitHub Actions](https://github.com/features/actions), automating testing, checks, and publishing.
 
 Use the provided `just` commands to manage your development workflow:
 
@@ -73,3 +73,12 @@ Use the provided `just` commands to manage your development workflow:
 - `uv run just install`: Install dependencies, pre-commit hooks, and GitHub rulesets.
 - `uv run just package`: Build your Python package.
 - `uv run just project`: Run the project in the CLI.
+
+* **Streamlined Project Structure:** A well-defined directory layout for source code, tests, documentation, tasks, and Docker configurations.
+Uv Integration: Effortless dependency management and packaging with [uv](https://docs.astral.sh/uv/).
+* **Automated Testing and Checks:** Pre-configured workflows using [Pytest](https://docs.pytest.org/), [Ruff](https://docs.astral.sh/ruff/), [Mypy](https://mypy.readthedocs.io/), [Bandit](https://bandit.readthedocs.io/), and [Coverage](https://coverage.readthedocs.io/) to ensure code quality, style, security, and type safety.
+* **Pre-commit Hooks:** Automatic code formatting and linting with [Ruff](https://docs.astral.sh/ruff/) and other pre-commit hooks to maintain consistency.
+* **Dockerized Deployment:** Dockerfile and docker-compose.yml for building and running the package within a containerized environment ([Docker](https://www.docker.com/)).
+* **uv+just Task Automation:** [just](https://github.com/casey/just) commands to simplify development workflows such as cleaning, installing, formatting, checking, building, documenting and running the project.
+* **Comprehensive Documentation:** [pdoc](https://pdoc.dev/) generates API documentation, and Markdown files provide clear usage instructions.
+* **GitHub Workflow Integration:** Continuous integration and deployment workflows are set up using [GitHub Actions](https://github.com/features/actions), automating testing, checks, and publishing.
