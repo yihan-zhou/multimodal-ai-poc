@@ -1,15 +1,67 @@
+import json
 import shutil
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import mlflow
+import numpy as np
+import numpy.typing as npt
 import ray
+import torch
+import torch.nn.functional as F
 from loguru import logger
+from ray.data import DataIterator
+from ray.train import Result
+from ray.train.torch import TorchTrainer, get_device
+from torch.optim import Optimizer
 
 from multimodal_ai_poc.train.model import ClassificationModel
 from multimodal_ai_poc.train.preprocessor import Preprocessor
 
-DEFAULT_N_TRAIN_LIMIT = 80
-DEFAULT_N_VAL_LIMIT = 20
+DEFAULT_N_TRAIN_LIMIT = 256 * 10
+DEFAULT_N_VAL_LIMIT = 256 * 2
+
+
+@dataclass
+class Batch:
+    """Dataclass equivalent of `batch` object, simply for clarity."""
+
+    path: list[str]
+    _class: list[str]
+    label: list[int]
+    embedding: npt.NDArray[np.float32]  # shape (5, 512)
+
+
+@dataclass
+class TensorBatch:
+    """Dataclass equivalent of `tensor_batch` object, simply for clarity."""
+
+    label: torch.Tensor  # dtype: torch.int64
+    embedding: torch.Tensor  # dtype: torch.float32
+
+
+def collate_fn(batch: dict[str, Any]) -> dict[str, Any]:
+    """Ensure tensors have the proper data type."""
+    dtypes = {"embedding": torch.float32, "label": torch.int64}
+    tensor_batch = {}
+    for key in dtypes.keys():
+        if key in batch:
+            tensor_batch[key] = torch.as_tensor(
+                batch[key],
+                dtype=dtypes[key],
+                device=get_device(),
+            )
+    return tensor_batch
+
+
+def setup_model_registry() -> Path:
+    model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
+    if model_registry.is_dir():
+        shutil.rmtree(model_registry)  # clean up
+    model_registry.mkdir(parents=True, exist_ok=True)
+    return model_registry
 
 
 # TODO: move somewhere more appropriate
@@ -18,7 +70,14 @@ def add_class(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def preprocess(train_limit: int | None = None, val_limit: int | None = None) -> Preprocessor:
+def preprocess(
+    train_limit: int | None = None, val_limit: int | None = None
+) -> tuple[Preprocessor, Path, Path]:
+    """
+
+    Return:
+        Preprocessor, preprocessed_train_path, preprocessed_val_path
+    """
     # Load
     logger.debug("Loading data")
     train_ds = ray.data.read_images(
@@ -51,12 +110,134 @@ def preprocess(train_limit: int | None = None, val_limit: int | None = None) -> 
 
     logger.info(f"Wrote to {preprocessed_train_path=} {preprocessed_val_path=}")
 
-    return preprocessor
+    return preprocessor, preprocessed_train_path, preprocessed_val_path
 
 
-def main() -> None:
+def train_epoch(
+    ds: DataIterator,
+    batch_size: int,
+    model: torch.nn.Module,
+    num_classes: int,
+    loss_fn: torch.nn.Module,
+    optimizer: Optimizer,
+) -> float:
+    """Run one training epoch."""
+    model.train()
+    loss = 0.0
+    ds_generator = ds.iter_torch_batches(batch_size=batch_size, collate_fn=collate_fn)
+    for i, batch in enumerate(ds_generator):
+        optimizer.zero_grad()  # Reset gradients.
+        z = model(batch)  # Forward pass.
+        targets = F.one_hot(batch["label"], num_classes=num_classes).float()
+        J = loss_fn(z, targets)  # Define loss.
+        J.backward()  # Backward pass.
+        optimizer.step()  # Update weights.
+        loss += (J.detach().item() - loss) / (i + 1)  # Cumulative loss
+    return loss
+
+
+def eval_epoch(
+    ds: DataIterator,
+    batch_size: int,
+    model: torch.nn.Module,
+    num_classes: int,
+    loss_fn: torch.nn.Module,
+) -> tuple[float, npt.NDArray, npt.NDArray]:
+    """Run one evaluation epoch."""
+    model.eval()
+    loss = 0.0
+    y_trues: list[int] = []
+    y_preds: list[int] = []
+    ds_generator = ds.iter_torch_batches(batch_size=batch_size, collate_fn=collate_fn)
+    with torch.inference_mode():
+        for i, batch in enumerate(ds_generator):
+            z = model(batch)
+            targets = F.one_hot(
+                batch["label"], num_classes=num_classes
+            ).float()  # one-hot (for loss_fn)
+            J = loss_fn(z, targets).item()
+            loss += (J - loss) / (i + 1)
+            y_trues.extend(batch["label"].cpu().numpy())
+            y_preds.extend(torch.argmax(z, dim=1).cpu().numpy())
+    return loss, np.vstack(y_trues), np.vstack(y_preds)
+
+
+def train_loop_per_worker(config: dict[str, Any]) -> None:
+    """Train loop input for TorchTrainer"""
+    # Hyperparameters.
+    model_registry = config["model_registry"]
+    experiment_name = config["experiment_name"]
+    embedding_dim = config["embedding_dim"]
+    hidden_dim = config["hidden_dim"]
+    dropout_p = config["dropout_p"]
+    lr = config["lr"]
+    lr_factor = config["lr_factor"]
+    lr_patience = config["lr_patience"]
+    num_epochs = config["num_epochs"]
+    batch_size = config["batch_size"]
+    num_classes = config["num_classes"]
+
+    # Experiment tracking.
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.set_tracking_uri(f"file:{model_registry}")
+        mlflow.set_experiment(experiment_name)
+        mlflow.start_run()
+        mlflow.log_params(config)
+
+    # Datasets.
+    train_ds = ray.train.get_dataset_shard("train")
+    val_ds = ray.train.get_dataset_shard("val")
+
+    # Model.
+    model = ClassificationModel(
+        embedding_dim=embedding_dim,
+        hidden_dim=hidden_dim,
+        dropout_p=dropout_p,
+        num_classes=num_classes,
+    )
+    model = ray.train.torch.prepare_model(model)
+
+    # Training components.
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=lr_factor,
+        patience=lr_patience,
+    )
+
+    # Training.
+    best_val_loss = float("inf")
+    for epoch in range(num_epochs):
+        # Steps
+        train_loss = train_epoch(train_ds, batch_size, model, num_classes, loss_fn, optimizer)
+        val_loss, _, _ = eval_epoch(val_ds, batch_size, model, num_classes, loss_fn)
+        scheduler.step(val_loss)
+
+        # Checkpoint (metrics, preprocessor and model artifacts).
+        with tempfile.TemporaryDirectory() as dp:
+            model.module.save(dp=dp)
+            metrics = dict(
+                lr=optimizer.param_groups[0]["lr"], train_loss=train_loss, val_loss=val_loss
+            )
+            checkpoint_file = Path(dp) / "class_to_label.json"
+            with open(checkpoint_file, "w") as fp:
+                json.dump(config["class_to_label"], fp, indent=4)
+            if ray.train.get_context().get_world_rank() == 0:  # only on main worker 0
+                mlflow.log_metrics(metrics, step=epoch)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    mlflow.log_artifacts(dp)
+
+    # End experiment tracking.
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.end_run()
+
+
+def train_classifier() -> Result:
     logger.info("Preprocessing")
-    preprocessor: Preprocessor = preprocess(
+    preprocessor, preprocessed_train_path, preprocessed_val_path = preprocess(
         train_limit=DEFAULT_N_TRAIN_LIMIT, val_limit=DEFAULT_N_VAL_LIMIT
     )
 
@@ -68,8 +249,53 @@ def main() -> None:
         dropout_p=0.3,
         num_classes=num_classes,
     )
-    print(model)
+    logger.info(f"{model=}")
+
+    logger.info("Setting up model registry")
+    model_registry = setup_model_registry()
+
+    # Train loop config.
+    experiment_name = "doggos"
+    train_loop_config = {
+        "model_registry": model_registry,
+        "experiment_name": experiment_name,
+        "embedding_dim": 512,
+        "hidden_dim": 256,
+        "dropout_p": 0.3,
+        "lr": 1e-3,
+        "lr_factor": 0.8,
+        "lr_patience": 3,
+        "num_epochs": 2,
+        "batch_size": 256,
+    }
+    # Scaling config
+    num_workers = 8
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=num_workers,
+        resources_per_worker={"CPU": 1},
+        # use_gpu=True,
+        # resources_per_worker={"CPU": 8, "GPU": 2},
+        # accelerator_type="T4",
+    )
+
+    # Load preprocessed datasets.
+    preprocessed_train_ds = ray.data.read_parquet(str(preprocessed_train_path))
+    preprocessed_val_ds = ray.data.read_parquet(str(preprocessed_val_path))
+
+    # Trainer.
+    train_loop_config["class_to_label"] = preprocessor.class_to_label
+    train_loop_config["num_classes"] = len(preprocessor.class_to_label)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_loop_per_worker,
+        train_loop_config=train_loop_config,
+        scaling_config=scaling_config,
+        datasets={"train": preprocessed_train_ds, "val": preprocessed_val_ds},
+    )
+    # Train.
+    results: Result = trainer.fit()
+    logger.info(results)
+    return results
 
 
 if __name__ == "__main__":
-    main()
+    train_classifier()

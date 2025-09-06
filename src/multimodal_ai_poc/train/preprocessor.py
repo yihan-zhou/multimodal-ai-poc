@@ -44,7 +44,6 @@ def convert_to_label(row: dict[str, Any], class_to_label: dict[str, str]) -> dic
             row["label"] = class_to_label[row["class"]]
         except KeyError:
             logger.warning(f"{row['class']=} not in {class_to_label=}")
-            row["label"] = "UNK"
     return row
 
 
@@ -64,7 +63,7 @@ class Preprocessor:
         return self
 
     def transform(
-        self, ds: ray.data.Dataset, concurrency: int = 4, batch_size: int = 64, num_gpus: int = 1
+        self, ds: ray.data.Dataset, concurrency: int = 4, batch_size: int = 64, num_gpus: int = 0
     ):
         ds = ds.map(
             convert_to_label,  # type: ignore[]

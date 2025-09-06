@@ -43,7 +43,7 @@ class ClassificationModel(torch.nn.Module):
         y_probs = F.softmax(z, dim=1).cpu().numpy()
         return y_probs
 
-    def save(self, dp):
+    def save(self, dp: str) -> None:
         Path(dp).mkdir(parents=True, exist_ok=True)
         with open(Path(dp, "args.json"), "w") as fp:
             json.dump(
@@ -62,5 +62,5 @@ class ClassificationModel(torch.nn.Module):
     def load(cls, args_fp, state_dict_fp, device="cpu"):
         with open(args_fp, "r") as fp:
             model = cls(**json.load(fp))
-        model.load_state_dict(torch.load(state_dict_fp, map_location=device))
+        model.load_state_dict(torch.load(state_dict_fp, map_location=device))  # nosec [B614:pytorch_load]
         return model
