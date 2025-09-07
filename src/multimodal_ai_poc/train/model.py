@@ -2,9 +2,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from loguru import logger
 from ray.train.torch import get_device
 
 from multimodal_ai_poc.train.preprocessor import Preprocessor
@@ -29,9 +32,8 @@ def add_class(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-# TODO: typehints
 class ClassificationModel(torch.nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, dropout_p, num_classes):
+    def __init__(self, embedding_dim: int, hidden_dim: int, dropout_p: float, num_classes: int):
         super().__init__()
         # Hyperparameters
         self.embedding_dim = embedding_dim
@@ -46,7 +48,7 @@ class ClassificationModel(torch.nn.Module):
         self.dropout = nn.Dropout(dropout_p)
         self.fc2 = nn.Linear(hidden_dim, num_classes)
 
-    def forward(self, batch):
+    def forward(self, batch: dict[str, Any]) -> torch.Tensor:
         z = self.fc1(batch["embedding"])
         z = self.batch_norm(z)
         z = self.relu(z)
@@ -55,13 +57,13 @@ class ClassificationModel(torch.nn.Module):
         return z
 
     @torch.inference_mode()
-    def predict(self, batch):
+    def predict(self, batch: dict[str, Any]) -> npt.NDArray[np.uint8]:
         z = self(batch)
         y_pred = torch.argmax(z, dim=1).cpu().numpy()
         return y_pred
 
     @torch.inference_mode()
-    def predict_probabilities(self, batch):
+    def predict_probabilities(self, batch: dict[str, Any]) -> npt.NDArray[np.float32]:
         z = self(batch)
         y_probs = F.softmax(z, dim=1).cpu().numpy()
         return y_probs
@@ -82,26 +84,26 @@ class ClassificationModel(torch.nn.Module):
         torch.save(self.state_dict(), Path(dp, "model.pt"))
 
     @classmethod
-    def load(cls, args_fp, state_dict_fp, device="cpu"):
+    def load(cls, args_fp: Path, state_dict_fp: Path, device: str="cpu") -> "ClassificationModel":
         with open(args_fp, "r") as fp:
             model = cls(**json.load(fp))
         model.load_state_dict(torch.load(state_dict_fp, map_location=device))  # nosec [B614:pytorch_load]
+        logger.info(f"{type(model)=}")
         return model
 
 
-# TODO: typehints
 class TorchPredictor:
-    def __init__(self, preprocessor, model):
+    def __init__(self, preprocessor: Preprocessor, model: ClassificationModel):
         self.preprocessor = preprocessor
         self.model = model
         self.model.eval()
 
-    def __call__(self, batch, device="cpu"):
+    def __call__(self, batch: dict[str, Any], device="cpu") -> dict[str, Any]:
         self.model.to(device)
         batch["prediction"] = self.model.predict(collate_fn(batch))
         return batch
 
-    def predict_probabilities(self, batch, device="cuda"):
+    def predict_probabilities(self, batch: dict[str, Any], device: str="cpu") -> dict[str, Any]:
         self.model.to(device)
         predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
         batch["probabilities"] = [
