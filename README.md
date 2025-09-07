@@ -12,7 +12,7 @@ A demo for multimodal AI POC, inspired by https://github.com/anyscale/multimodal
 
 This demonstrates using Ray libraries to build a dog image classifier on top of a pre-trained embedding model. Embeddings are generated using Ray Data for distributed processing. The classifier is trained using a [TorchTrainer](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html) from the Ray Train library. 
 
-This example uses the `s3://doggos-dataset` which appears custom to this example. It is split into train, val, test sets of sizes 2880, 720. Images are `shape=(500, 375, 3)`
+This example uses the `s3://doggos-dataset` which appears custom to this example. It is split into train, val, test sets of sizes 2880, 720. Images are `shape=(500, 375, 3), dtype=uint8`.
 
 ```aiignore
 import ray
