@@ -25,7 +25,7 @@ DEFAULT_N_VAL_LIMIT = 32 * 1
 
 @dataclass
 class Batch:
-    """Dataclass equivalent of `batch` object, simply for clarity."""
+    """Dataclass to demonstrate structure of a `batch` object as originally included in model code"""
 
     path: list[str]
     _class: list[str]
@@ -35,7 +35,7 @@ class Batch:
 
 @dataclass
 class TensorBatch:
-    """Dataclass equivalent of `tensor_batch` object, simply for clarity."""
+    """Dataclass to demonstrate structure of a `tensor_batch` object as originally included in model code"""
 
     label: torch.Tensor  # dtype: torch.int64
     embedding: torch.Tensor  # dtype: torch.float32
@@ -142,7 +142,8 @@ def eval_epoch(
 
 
 def train_loop_per_worker(config: dict[str, Any]) -> None:
-    """Train loop input for TorchTrainer"""
+    """Train loop input for TorchTrainer."""
+    # NOTE: cannot use logger in this fn OR any fns invoked since it result in a serialization issue!
     # Hyperparameters.
     model_registry = config["model_registry"]
     experiment_name = config["experiment_name"]

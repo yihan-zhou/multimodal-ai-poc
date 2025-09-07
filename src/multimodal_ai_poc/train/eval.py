@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import mlflow
@@ -12,15 +13,20 @@ from multimodal_ai_poc.train.model import TorchPredictor, add_class
 
 
 @dataclass
-class ConfusionMatrixOutput:
+class BatchMetricOutput:
+    """Dataclass to demonstrate output of batch_metric as originally implemented"""
+
     true_neg: list[float]
     false_neg: list[float]
     true_pos: list[float]
     false_pos: list[float]
 
 
-# def batch_metric(batch) -> ConfusionMatrixOutput:
-def batch_metric(batch) -> dict[str, list[float]]:
+def batch_metric(batch: dict[str, Any]) -> dict[str, list[float]]:
+    """Calculate classification metrics on a batch of samples.
+
+    See the Batch dataclass for the batch schema.
+    """
     labels = batch["label"]
     preds = batch["prediction"]
     mcm = multilabel_confusion_matrix(labels, preds)
@@ -30,7 +36,11 @@ def batch_metric(batch) -> dict[str, list[float]]:
         fp.append(mcm[i, 0, 1])  # False positives
         fn.append(mcm[i, 1, 0])  # False negatives
         tp.append(mcm[i, 1, 1])  # True positives
-    # return ConfusionMatrixOutput(
+
+    # NOTE: typehinting functions like this that will be applied to ray.data.Datasets is a bit tricky
+    # It would be more descriptive to return e.g. a dataclass but I don't know how to integrate that with ds.map_batches
+    # For now, leaving this here in case it can be rectified later after closer investigation of map_batches
+    # result = ConfusionMatrixOutput(
     #     true_neg=tn,
     #     false_neg=fn,
     #     true_pos=tp,
@@ -39,8 +49,8 @@ def batch_metric(batch) -> dict[str, list[float]]:
     return {"TN": tn, "FP": fp, "FN": fn, "TP": tp}
 
 
-# TODO: finish and typehint
 def get_best_run(model_registry: Path, experiment_name: str) -> pd.Series:
+    """Get the best run from an MLFlow experiment (on a hard-coded metric)."""
     # Sorted runs
     mlflow.set_tracking_uri(f"file:{str(model_registry)}")
     sorted_runs: pd.DataFrame = mlflow.search_runs(
@@ -50,15 +60,20 @@ def get_best_run(model_registry: Path, experiment_name: str) -> pd.Series:
     return best_run
 
 
-def eval():
-    model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
-    experiment_name = "doggos"
-    best_run: pd.Series = get_best_run(model_registry=model_registry, experiment_name=experiment_name)
+def eval_classifier() -> None:
+    """Evaluate the best TorchPredictor experiment on the test set."""
+
+    # From experiment logged in training run
+    mlflow_model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
+    mlflow_experiment_name = "doggos"
+    best_run: pd.Series = get_best_run(
+        model_registry=mlflow_model_registry, experiment_name=mlflow_experiment_name
+    )
     artifacts_dir = Path(urlparse(best_run.artifact_uri).path)
     logger.info(f"{best_run=}")
     logger.info(f"{artifacts_dir=}")
 
-    # Load and preproces eval dataset.
+    # Load and preproces eval dataset
     DEFAULT_N_TEST_LIMIT = 10
     predictor = TorchPredictor.from_artifacts_dir(artifacts_dir=artifacts_dir)
     test_ds = ray.data.read_images("s3://doggos-dataset/test", include_paths=True)
@@ -73,19 +88,19 @@ def eval():
         # num_gpus=1,
         # accelerator_type="T4",
     )
-    logger.info(pred_ds.take(1))
+    logger.debug(pred_ds.take(1))
 
-    # Aggregated metrics after processing all batches.
+    # Aggregated metrics after processing all batches
     metrics_ds = pred_ds.map_batches(batch_metric)
     aggregate_metrics = metrics_ds.sum(["TN", "FP", "FN", "TP"])
 
-    # Aggregate the confusion matrix components across all batches.
+    # Aggregate the confusion matrix components across all batches
     tn = aggregate_metrics["sum(TN)"]
     fp = aggregate_metrics["sum(FP)"]
     fn = aggregate_metrics["sum(FN)"]
     tp = aggregate_metrics["sum(TP)"]
 
-    # Calculate metrics.
+    # Calculate and log metrics
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
@@ -97,4 +112,4 @@ def eval():
 
 
 if __name__ == "__main__":
-    eval()
+    eval_classifier()
