@@ -1,5 +1,6 @@
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,8 +20,8 @@ from torch.optim import Optimizer
 from multimodal_ai_poc.train.model import ClassificationModel, add_class, collate_fn
 from multimodal_ai_poc.train.preprocessor import Preprocessor
 
-DEFAULT_N_TRAIN_LIMIT = 32 * 3
-DEFAULT_N_VAL_LIMIT = 32 * 1
+DEFAULT_N_TRAIN_LIMIT = 32 * 20
+DEFAULT_N_VAL_LIMIT = 32 * 2
 
 
 @dataclass
@@ -156,7 +157,6 @@ def train_loop_per_worker(config: dict[str, Any]) -> None:
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_classes = config["num_classes"]
-    artifacts_dir = config["artifacts_dir"]
 
     # Experiment tracking.
     if ray.train.get_context().get_world_rank() == 0:
@@ -197,17 +197,19 @@ def train_loop_per_worker(config: dict[str, Any]) -> None:
         scheduler.step(val_loss)
 
         # Checkpoint (metrics, preprocessor and model artifacts).
-        # with tempfile.TemporaryDirectory() as dp:
-        model.module.save(dp=artifacts_dir)
-        metrics = dict(lr=optimizer.param_groups[0]["lr"], train_loss=train_loss, val_loss=val_loss)
-        checkpoint_file = Path(artifacts_dir) / "class_to_label.json"
-        with open(checkpoint_file, "w") as fp:
-            json.dump(config["class_to_label"], fp, indent=4)
-        if ray.train.get_context().get_world_rank() == 0:  # only on main worker 0
-            mlflow.log_metrics(metrics, step=epoch)
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                mlflow.log_artifacts(artifacts_dir)
+        with tempfile.TemporaryDirectory() as dp:
+            model.module.save(dp=dp)
+            metrics = dict(
+                lr=optimizer.param_groups[0]["lr"], train_loss=train_loss, val_loss=val_loss
+            )
+            checkpoint_file = Path(dp) / "class_to_label.json"
+            with open(checkpoint_file, "w") as fp:
+                json.dump(config["class_to_label"], fp, indent=4)
+            if ray.train.get_context().get_world_rank() == 0:  # only on main worker 0
+                mlflow.log_metrics(metrics, step=epoch)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    mlflow.log_artifacts(dp)
 
     # End experiment tracking.
     if ray.train.get_context().get_world_rank() == 0:
