@@ -1,6 +1,5 @@
 import json
 import shutil
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,14 +13,14 @@ import torch.nn.functional as F
 from loguru import logger
 from ray.data import DataIterator
 from ray.train import Result
-from ray.train.torch import TorchTrainer, get_device
+from ray.train.torch import TorchTrainer
 from torch.optim import Optimizer
 
-from multimodal_ai_poc.train.model import ClassificationModel
+from multimodal_ai_poc.train.model import ClassificationModel, add_class, collate_fn
 from multimodal_ai_poc.train.preprocessor import Preprocessor
 
-DEFAULT_N_TRAIN_LIMIT = 256 * 10
-DEFAULT_N_VAL_LIMIT = 256 * 2
+DEFAULT_N_TRAIN_LIMIT = 32 * 3
+DEFAULT_N_VAL_LIMIT = 32 * 1
 
 
 @dataclass
@@ -42,32 +41,12 @@ class TensorBatch:
     embedding: torch.Tensor  # dtype: torch.float32
 
 
-def collate_fn(batch: dict[str, Any]) -> dict[str, Any]:
-    """Ensure tensors have the proper data type."""
-    dtypes = {"embedding": torch.float32, "label": torch.int64}
-    tensor_batch = {}
-    for key in dtypes.keys():
-        if key in batch:
-            tensor_batch[key] = torch.as_tensor(
-                batch[key],
-                dtype=dtypes[key],
-                device=get_device(),
-            )
-    return tensor_batch
-
-
 def setup_model_registry() -> Path:
     model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
     if model_registry.is_dir():
         shutil.rmtree(model_registry)  # clean up
     model_registry.mkdir(parents=True, exist_ok=True)
     return model_registry
-
-
-# TODO: move somewhere more appropriate
-def add_class(row: dict[str, Any]) -> dict[str, Any]:
-    row["class"] = row["path"].rsplit("/", 3)[-2]
-    return row
 
 
 def preprocess(
@@ -176,6 +155,7 @@ def train_loop_per_worker(config: dict[str, Any]) -> None:
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_classes = config["num_classes"]
+    artifacts_dir = config["artifacts_dir"]
 
     # Experiment tracking.
     if ray.train.get_context().get_world_rank() == 0:
@@ -216,19 +196,17 @@ def train_loop_per_worker(config: dict[str, Any]) -> None:
         scheduler.step(val_loss)
 
         # Checkpoint (metrics, preprocessor and model artifacts).
-        with tempfile.TemporaryDirectory() as dp:
-            model.module.save(dp=dp)
-            metrics = dict(
-                lr=optimizer.param_groups[0]["lr"], train_loss=train_loss, val_loss=val_loss
-            )
-            checkpoint_file = Path(dp) / "class_to_label.json"
-            with open(checkpoint_file, "w") as fp:
-                json.dump(config["class_to_label"], fp, indent=4)
-            if ray.train.get_context().get_world_rank() == 0:  # only on main worker 0
-                mlflow.log_metrics(metrics, step=epoch)
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    mlflow.log_artifacts(dp)
+        # with tempfile.TemporaryDirectory() as dp:
+        model.module.save(dp=artifacts_dir)
+        metrics = dict(lr=optimizer.param_groups[0]["lr"], train_loss=train_loss, val_loss=val_loss)
+        checkpoint_file = Path(artifacts_dir) / "class_to_label.json"
+        with open(checkpoint_file, "w") as fp:
+            json.dump(config["class_to_label"], fp, indent=4)
+        if ray.train.get_context().get_world_rank() == 0:  # only on main worker 0
+            mlflow.log_metrics(metrics, step=epoch)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                mlflow.log_artifacts(artifacts_dir)
 
     # End experiment tracking.
     if ray.train.get_context().get_world_rank() == 0:
@@ -266,7 +244,7 @@ def train_classifier() -> Result:
         "lr_factor": 0.8,
         "lr_patience": 3,
         "num_epochs": 2,
-        "batch_size": 256,
+        "batch_size": 32,
     }
     # Scaling config
     num_workers = 8

@@ -1,9 +1,32 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from ray.train.torch import get_device
+
+from multimodal_ai_poc.train.preprocessor import Preprocessor
+
+
+def collate_fn(batch: dict[str, Any]) -> dict[str, Any]:
+    """Ensure tensors have the proper data type."""
+    dtypes = {"embedding": torch.float32, "label": torch.int64}
+    tensor_batch = {}
+    for key in dtypes.keys():
+        if key in batch:
+            tensor_batch[key] = torch.as_tensor(
+                batch[key],
+                dtype=dtypes[key],
+                device=get_device(),
+            )
+    return tensor_batch
+
+
+def add_class(row: dict[str, Any]) -> dict[str, Any]:
+    row["class"] = row["path"].rsplit("/", 3)[-2]
+    return row
 
 
 # TODO: typehints
@@ -64,3 +87,40 @@ class ClassificationModel(torch.nn.Module):
             model = cls(**json.load(fp))
         model.load_state_dict(torch.load(state_dict_fp, map_location=device))  # nosec [B614:pytorch_load]
         return model
+
+
+# TODO: typehints
+class TorchPredictor:
+    def __init__(self, preprocessor, model):
+        self.preprocessor = preprocessor
+        self.model = model
+        self.model.eval()
+
+    def __call__(self, batch, device="cpu"):
+        self.model.to(device)
+        batch["prediction"] = self.model.predict(collate_fn(batch))
+        return batch
+
+    def predict_probabilities(self, batch, device="cuda"):
+        self.model.to(device)
+        predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
+        batch["probabilities"] = [
+            {
+                self.preprocessor.label_to_class[i]: float(prob)
+                for i, prob in enumerate(probabilities)
+            }
+            for probabilities in predicted_probabilities
+        ]
+        return batch
+
+    @classmethod
+    def from_artifacts_dir(cls, artifacts_dir: Path) -> "TorchPredictor":
+        class_to_label_path = artifacts_dir / "class_to_label.json"
+        with open(class_to_label_path, "r") as fp:
+            class_to_label = json.load(fp)
+        preprocessor = Preprocessor(class_to_label=class_to_label)
+        model = ClassificationModel.load(
+            args_fp=artifacts_dir / "args.json",
+            state_dict_fp=artifacts_dir / "model.pt",
+        )
+        return cls(preprocessor=preprocessor, model=model)
