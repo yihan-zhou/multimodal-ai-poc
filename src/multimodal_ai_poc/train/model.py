@@ -84,7 +84,7 @@ class ClassificationModel(torch.nn.Module):
         torch.save(self.state_dict(), Path(dp, "model.pt"))
 
     @classmethod
-    def load(cls, args_fp: Path, state_dict_fp: Path, device: str="cpu") -> "ClassificationModel":
+    def load(cls, args_fp: Path, state_dict_fp: Path, device: str = "cpu") -> "ClassificationModel":
         with open(args_fp, "r") as fp:
             model = cls(**json.load(fp))
         model.load_state_dict(torch.load(state_dict_fp, map_location=device))  # nosec [B614:pytorch_load]
@@ -103,7 +103,7 @@ class TorchPredictor:
         batch["prediction"] = self.model.predict(collate_fn(batch))
         return batch
 
-    def predict_probabilities(self, batch: dict[str, Any], device: str="cpu") -> dict[str, Any]:
+    def predict_probabilities(self, batch: dict[str, Any], device: str = "cpu") -> dict[str, Any]:
         self.model.to(device)
         predicted_probabilities = self.model.predict_probabilities(collate_fn(batch))
         batch["probabilities"] = [

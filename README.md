@@ -10,7 +10,11 @@
 
 A demo for multimodal AI POC, inspired by https://github.com/anyscale/multimodal-ai/blob/main/README.md
 
-This demonstrates using Ray libraries to build a dog image classifier on top of a pre-trained embedding model. Embeddings are generated using Ray Data for distributed processing. The classifier is trained using a [TorchTrainer](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html) from the Ray Train library. 
+This demonstrates using Ray libraries to build a dog image classifier on top of a pre-trained embedding model.
+
+Embeddings are generated using Ray Data for distributed processing. This utilizes a pre-trained `CLIPModel` loaded from HuggingFace.
+
+The classifier is trained using a `TorchTrainer` from the Ray Train library. It is a simple 2-layer NN with FC1 > ReLU > FC2. 
 
 This example uses the `s3://doggos-dataset` which appears custom to this example. It is split into train, val, test sets of sizes 2880, 720. Images are `shape=(500, 375, 3), dtype=uint8`.
 
@@ -25,15 +29,20 @@ train_ds.count()
 >>> 2880
 
 record = train_ds.take(1)
-record[0]['image'].shape
->>> (500, 375, 3)
+record[0]['image'].shape, record[0]['image'].dtype 
+>>> (500, 375, 3), "uint8"
 ```
 
 Some relevant docs:
-- Ray Docs: [Get Started with Distributed Training using PyTorch](https://docs.ray.io/en/latest/train/getting-started-pytorch.html#train-pytorch)
-- - Demonstrates the distributed training job config implemented here
+- HuggingFace: [Transformers - CLIP models](https://huggingface.co/docs/transformers/en/model_doc/clip)
+
+> CLIP is a is a multimodal vision and language model motivated by overcoming the fixed number of object categories when training a computer vision model. CLIP learns about images directly from raw text by jointly training on 400M (image, text) pairs. Pretraining on this scale enables zero-shot transfer to downstream tasks. CLIP uses an image encoder and text encoder to get visual features and text features. Both features are projected to a latent space with the same number of dimensions and their dot product gives a similarity score.
+
 - Ray Docs: [Ray Data > User Guides > Transforming Data](https://docs.ray.io/en/latest/data/transforming-data.html#transforming-batches)
 - - Describes transformations for `ray.data.Dataset`s as used in our embedding generation preprocessing
+- Ray Docs: [Ray Train > PyTorch Guide: Get Started with Distributed Training using PyTorch](https://docs.ray.io/en/latest/train/getting-started-pytorch.html#train-pytorch)
+- - Demonstrates the distributed training job config implemented here
+- Ray Docs: [Ray Train API > ray.train.torch.TorchTrainer](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.TorchTrainer.html)
 
 # Installation
 
@@ -44,31 +53,47 @@ uv run just install
 ```
 # Usage
 
+## Dog Image Classifier
+
+Run the following script to train and evaluate the classifier.
+
+Note the scripts don't yet include:
+- Parametrization of training or eval settings. For example, the resources are hard-coded.
+- Persistence of MLFlow artifacts (the model registry is configured to `/tmp` so it eventually gets cleaned up)
+
+```aiignore
+python multimodal_ai_poc/train/train.py
+```
+
+```aiignore
+python multimodal_ai_poc/train/eval.py
+```
+
 ### Embeddings
 
-There is a module that uses a pre-trained CLIPModel to generate image embeddings. It can be run individually and is also used in the training pipeline.
+There is a module that uses a pre-trained CLIPModel to generate image embeddings. It can be run individually (this was done as a practice exercise) and is also used in the training pipeline.
 
 Example usage:
 ```aiignore
 python multimodal_ai_poc/embeddings.py \
-    -d s3://doggos-dataset/train \
-    -n 100 \
-    -m openai/clip-vit-base-patch32 \
-    -w 4 \
-    -o embeddings
+    --dataset-uri s3://doggos-dataset/train \
+    --num-images 100 \
+    --model-id openai/clip-vit-base-patch32 \
+    --num-ray-workers 4 \
+    --embeddings-output-dir embeddings
 ```
 
 ### Similar Images
 
-There is a module that returns the topn most similar images given a set of embeddings. (This was largely reproduced as a practice exercise.)
+There is a module that returns the topn most similar images given a set of embeddings. (This was largely reproduced from [01-Batch-Inference.ipynb](https://github.com/anyscale/multimodal-ai/blob/main/notebooks/01-Batch-Inference.ipynb) as a practice exercise.)
 
 Example usage:
 ```aiignore
 python multimodal_ai_poc/similar_images.py \
-    -i https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png \
-    -e embeddings \
-    -m openai/clip-vit-base-patch32 \
-    -n 10
+    --image-url https://doggos-dataset.s3.us-west-2.amazonaws.com/samara.png \
+    --embeddings-dir embeddings \
+    --model-id openai/clip-vit-base-patch32 \
+    --num-matches 10
 ```
 
 Example for general Docker instructions:
