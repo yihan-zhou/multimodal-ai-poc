@@ -40,7 +40,7 @@ def batch_metric(batch) -> dict[str, list[float]]:
 
 
 # TODO: finish and typehint
-def get_best_run(model_registry: Path, experiment_name: str):
+def get_best_run(model_registry: Path, experiment_name: str) -> pd.Series:
     # Sorted runs
     mlflow.set_tracking_uri(f"file:{str(model_registry)}")
     sorted_runs: pd.DataFrame = mlflow.search_runs(
@@ -53,7 +53,7 @@ def get_best_run(model_registry: Path, experiment_name: str):
 def eval():
     model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
     experiment_name = "doggos"
-    best_run = get_best_run(model_registry=model_registry, experiment_name=experiment_name)
+    best_run: pd.Series = get_best_run(model_registry=model_registry, experiment_name=experiment_name)
     artifacts_dir = Path(urlparse(best_run.artifact_uri).path)
     logger.info(f"{best_run=}")
     logger.info(f"{artifacts_dir=}")
