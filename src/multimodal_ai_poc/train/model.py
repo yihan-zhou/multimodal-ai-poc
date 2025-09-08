@@ -7,7 +7,6 @@ import numpy.typing as npt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from loguru import logger
 from ray.train.torch import get_device
 
 from multimodal_ai_poc.train.preprocessor import Preprocessor
@@ -88,7 +87,6 @@ class ClassificationModel(torch.nn.Module):
         with open(args_fp, "r") as fp:
             model = cls(**json.load(fp))
         model.load_state_dict(torch.load(state_dict_fp, map_location=device))  # nosec [B614:pytorch_load]
-        logger.info(f"{type(model)=}")
         return model
 
 

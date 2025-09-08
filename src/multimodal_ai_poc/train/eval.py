@@ -60,17 +60,22 @@ def get_best_run(model_registry: Path, experiment_name: str) -> pd.Series:
     return best_run
 
 
-def eval_classifier() -> None:
-    """Evaluate the best TorchPredictor experiment on the test set."""
-
-    # From experiment logged in training run
+def get_artifacts_dir_best_run() -> Path:
     mlflow_model_registry = Path("/tmp/mlflow/doggos")  # nosec [B108:hardcoded_tmp_directory]
     mlflow_experiment_name = "doggos"
     best_run: pd.Series = get_best_run(
         model_registry=mlflow_model_registry, experiment_name=mlflow_experiment_name
     )
+    logger.debug(f"{best_run=}")
     artifacts_dir = Path(urlparse(best_run.artifact_uri).path)
-    logger.info(f"{best_run=}")
+    return artifacts_dir
+
+
+def eval_classifier() -> None:
+    """Evaluate the best TorchPredictor experiment on the test set."""
+
+    # From experiment logged in training run
+    artifacts_dir = get_artifacts_dir_best_run()
     logger.info(f"{artifacts_dir=}")
 
     # Load and preproces eval dataset
