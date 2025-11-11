@@ -6,8 +6,8 @@
 [project]
 name = "multimodal-ai-poc"
 version = "0.1.0"
-description = "TODO"
-authors = [{ name = "yihan-zhou" }]
+description = "Multimodal AI POC, for personal practice"
+authors = [{ name = "yihan-zhou" }, { name = "irod973"}]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
@@ -22,11 +22,6 @@ Homepage = "https://github.com/yihan-zhou/multimodal-ai-poc"
 Documentation = "https://yihan-zhou.github.io/multimodal-ai-poc/"
 Repository = "https://github.com/yihan-zhou/multimodal-ai-poce"
 "Bug Tracker" = "https://github.com/yihan-zhou/multimodal-ai-poc/issues"
-
-# SCRIPTS
-
-[project.scripts]
-multimodal-ai-poc = "multimodal_ai_poc.scripts:main"
 
 # DEPENDENCIES
 
